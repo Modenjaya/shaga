@@ -92,6 +92,9 @@ class AutoSpinBot {
              @zclsx (GitHub)
 =====================================
         `;
+
+        // !!! PENTING: ID QUEST YANG DITEMUKAN DARI PERMINTAAN MANUAL ANDA !!!
+        this.QUEST_ID = '6bb26924-e6ee-473f-8ad0-5e743c3f3e1f'; 
     }
 
     async initialize() {
@@ -196,13 +199,14 @@ class AutoSpinBot {
                 logger.warn(`Menggunakan proxy: ${proxyAgentUrl} untuk akun ${this._maskEmail(account.email)}. Pastikan modul agen proxy terinstal.`);
             }
             
-            const response = await axios.get(`${this.API_BASE_URL}/quests/can-spin`, axiosConfig);
+            // Menggunakan QUEST_ID untuk endpoint can-spin
+            const response = await axios.get(`${this.API_BASE_URL}/quests/${this.QUEST_ID}/can-spin`, axiosConfig);
             return response.data;
         } catch (error) {
             // Penanganan kesalahan 500 sebagai sudah melakukan spin, perlu menunggu
             if (error.response && error.response.status === 500) {
                 logger.warn(`Pemeriksaan status Spin akun ${this._maskEmail(account.email)} mengembalikan kesalahan 500, mungkin sudah melakukan spin, menunggu siklus berikutnya`);
-                // Kembalikan data simulasi yang menunjukkan tidak bisa spin dan perlu menunggu 4 jam
+                // Kembali ke data simulasi, menunjukkan tidak bisa spin dan perlu menunggu 4 jam
                 const nextSpinTime = 4 * 60 * 60 * 1000; // 4 jam dalam milidetik
                 return {
                     canSpin: false,
@@ -234,9 +238,10 @@ class AutoSpinBot {
                 // Contoh: axiosConfig.httpsAgent = new HttpsProxyAgent(proxyAgentUrl);
             }
             
+            // Menggunakan QUEST_ID untuk endpoint spin, dan mengirim body kosong
             const response = await axios.post(
-                `${this.API_BASE_URL}/quests/spin`,
-                { uid: account.uid },
+                `${this.API_BASE_URL}/quests/${this.QUEST_ID}`,
+                {}, // Body kosong
                 axiosConfig
             );
             return response.data;
@@ -328,10 +333,6 @@ class AutoSpinBot {
         this.spinAndCheckAccounts();
 
         // Atur untuk berjalan setiap 4 jam 3 menit (243 menit)
-        // Menggunakan cron.schedule(`3 */4 * * *`)
-        // Jika Anda ingin menggunakan this.checkInterval dari konfigurasi:
-        // cron.schedule(`*/${Math.floor(this.checkInterval / 60)} * * * *`, () => { ... });
-        // Namun, 4 jam 3 menit adalah jadwal spesifik, jadi kita biarkan seperti ini.
         cron.schedule(`3 */4 * * *`, () => {
             this.spinAndCheckAccounts();
         });
