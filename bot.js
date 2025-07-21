@@ -93,7 +93,7 @@ class AutoSpinBot {
 =====================================
         `;
 
-        // !!! PENTING: ID QUEST YANG DITEMUKAN DARI PERMINTAAN MANUAL ANDA !!!
+        // ID QUEST untuk operasi spin, berdasarkan temuan Anda.
         this.QUEST_ID = '6bb26924-e6ee-473f-8ad0-5e743c3f3e1f'; 
     }
 
@@ -177,47 +177,8 @@ class AutoSpinBot {
         return uid.substring(0, 6) + '...' + uid.substring(uid.length - 4);
     }
 
-    async checkCanSpin(account) {
-        try {
-            // Dapatkan agen proxy untuk akun
-            const proxyAgentUrl = proxyManager.getProxyAgent(account.email);
-            const axiosConfig = {
-                headers: {
-                    'authorization': `Bearer ${account.token}`,
-                    'accept': 'application/json',
-                    'origin': 'https://glob.shaga.xyz',
-                    'referer': 'https://glob.shaga.xyz/'
-                }
-            };
-            
-            // Jika ada proxy, tambahkan ke konfigurasi axios
-            if (proxyAgentUrl) {
-                // Anda perlu menginstal 'https-proxy-agent' atau 'socks-proxy-agent'
-                // dan menginisialisasinya di sini. Contoh:
-                // const { HttpsProxyAgent } = require('https-proxy-agent');
-                // axiosConfig.httpsAgent = new HttpsProxyAgent(proxyAgentUrl);
-                logger.warn(`Menggunakan proxy: ${proxyAgentUrl} untuk akun ${this._maskEmail(account.email)}. Pastikan modul agen proxy terinstal.`);
-            }
-            
-            // Menggunakan QUEST_ID untuk endpoint can-spin
-            const response = await axios.get(`${this.API_BASE_URL}/quests/${this.QUEST_ID}/can-spin`, axiosConfig);
-            return response.data;
-        } catch (error) {
-            // Penanganan kesalahan 500 sebagai sudah melakukan spin, perlu menunggu
-            if (error.response && error.response.status === 500) {
-                logger.warn(`Pemeriksaan status Spin akun ${this._maskEmail(account.email)} mengembalikan kesalahan 500, mungkin sudah melakukan spin, menunggu siklus berikutnya`);
-                // Kembali ke data simulasi, menunjukkan tidak bisa spin dan perlu menunggu 4 jam
-                const nextSpinTime = 4 * 60 * 60 * 1000; // 4 jam dalam milidetik
-                return {
-                    canSpin: false,
-                    nextSpinDurationMs: nextSpinTime
-                };
-            }
-            
-            logger.error(`Gagal memeriksa status Spin akun ${this._maskEmail(account.email)}: ${error.message}`);
-            return null;
-        }
-    }
+    // Fungsi checkCanSpin dihapus karena endpointnya tidak ditemukan atau tidak diperlukan.
+    // Status cooldown akan didapatkan langsung dari respons performSpin.
 
     async performSpin(account) {
         try {
@@ -235,19 +196,34 @@ class AutoSpinBot {
             
             // Jika ada proxy, tambahkan ke konfigurasi axios
             if (proxyAgentUrl) {
-                // Contoh: axiosConfig.httpsAgent = new HttpsProxyAgent(proxyAgentUrl);
+                // Anda perlu menginstal 'https-proxy-agent' atau 'socks-proxy-agent'
+                // dan menginisialisasinya di sini. Contoh:
+                // const { HttpsProxyAgent } = require('https-proxy-agent');
+                // axiosConfig.httpsAgent = new HttpsProxyAgent(proxyAgentUrl);
+                logger.warn(`Menggunakan proxy: ${proxyAgentUrl} untuk akun ${this._maskEmail(account.email)}. Pastikan modul agen proxy terinstal.`);
             }
             
             // Menggunakan QUEST_ID untuk endpoint spin, dan mengirim body kosong
             const response = await axios.post(
                 `${this.API_BASE_URL}/quests/${this.QUEST_ID}`,
-                {}, // Body kosong
+                {}, // Body kosong seperti yang terlihat di permintaan manual Anda
                 axiosConfig
             );
             return response.data;
         } catch (error) {
+            // Tangani respons kesalahan dari server
             if (error.response && error.response.data) {
-                return error.response.data;
+                // Jika server mengembalikan pesan cooldown, kita tangani di sini
+                if (error.response.data.message === "Cooldown period not over yet") {
+                    logger.warn(`Akun ${this._maskEmail(account.email)}: ${error.response.data.message}`);
+                    return {
+                        message: error.response.data.message,
+                        nextSpinDurationMs: error.response.data.nextSpinDurationMs // Asumsi server mengirim ini
+                    };
+                }
+                // Jika ada kesalahan lain dari server (misalnya, token tidak valid, dll.)
+                logger.error(`Akun ${this._maskEmail(account.email)} Spin gagal dengan respons server: ${JSON.stringify(error.response.data)}`);
+                return error.response.data; // Kembalikan data kesalahan dari server
             }
             logger.error(`Gagal melakukan Spin untuk akun ${this._maskEmail(account.email)}: ${error.message}`);
             return null;
@@ -262,68 +238,70 @@ class AutoSpinBot {
     }
 
     async checkAndSpin(account) {
-        const spinStatus = await this.checkCanSpin(account);
+        // Langsung coba melakukan spin
+        logger.info(`Akun ${this._maskEmail(account.email)} sedang mencoba melakukan Spin...`);
+        const spinResult = await this.performSpin(account);
         
-        if (!spinStatus) {
-            logger.warn(`Akun ${this._maskEmail(account.email)} tidak dapat memperoleh status Spin, akan mencoba lagi di siklus berikutnya`);
-            return;
-        }
-
-        if (spinStatus.canSpin) {
-            if (this.countdowns[account.uid]) {
-                clearInterval(this.countdowns[account.uid]);
-                delete this.countdowns[account.uid];
-                logger.clearLine();
-            }
-
-            logger.info(`Akun ${this._maskEmail(account.email)} sedang melakukan Spin...`);
-            const spinResult = await this.performSpin(account);
-            
-            if (spinResult) {
-                if (spinResult.message === "Cooldown period not over yet") {
-                    logger.warn(`Akun ${this._maskEmail(account.email)} ${spinResult.message}`);
-                    this.startCountdown(account, spinResult.nextSpinDurationMs);
-                } else {
-                    logger.success(`Akun ${this._maskEmail(account.email)} Spin berhasil!`);
-                    
-                    // Output detail hasil Spin
-                    if (spinResult.rewards) {
-                        logger.info(`Akun ${this._maskEmail(account.email)} mendapatkan hadiah: ${JSON.stringify(spinResult.rewards)}`);
-                    }
-                }
+        if (spinResult) {
+            if (spinResult.message === "Cooldown period not over yet") {
+                // Jika ada pesan cooldown, mulai hitung mundur
+                this.startCountdown(account, spinResult.nextSpinDurationMs);
+            } else if (spinResult.rewards) {
+                // Jika berhasil spin dan ada hadiah
+                logger.success(`Akun ${this._maskEmail(account.email)} Spin berhasil!`);
+                logger.info(`Akun ${this._maskEmail(account.email)} mendapatkan hadiah: ${JSON.stringify(spinResult.rewards)}`);
+                // Setelah spin berhasil, asumsikan perlu cooldown lagi (misal 4 jam)
+                // Jika API tidak memberikan nextSpinDurationMs setelah spin berhasil,
+                // Anda mungkin perlu mengatur default cooldown di sini.
+                this.startCountdown(account, 4 * 60 * 60 * 1000); // Default 4 jam
             } else {
-                logger.error(`Akun ${this._maskEmail(account.email)} Spin gagal`);
+                // Tangani kasus lain jika respons tidak memiliki 'message' atau 'rewards'
+                logger.error(`Akun ${this._maskEmail(account.email)} Spin gagal atau respons tidak terduga: ${JSON.stringify(spinResult)}`);
             }
         } else {
-            this.startCountdown(account, spinStatus.nextSpinDurationMs);
+            logger.error(`Akun ${this._maskEmail(account.email)} Spin gagal tanpa respons yang jelas.`);
         }
     }
 
     startCountdown(account, duration) {
         if (this.countdowns[account.uid]) {
+            // Jika sudah ada hitung mundur aktif untuk akun ini, jangan mulai yang baru
             return;
         }
 
+        const initialDuration = duration; // Simpan durasi awal untuk referensi
         const updateInterval = setInterval(() => {
             logger.clearLine();
             process.stdout.write(
                 `Akun ${this._maskEmail(account.email)} Hitung mundur Spin berikutnya: ${this.formatTimeRemaining(duration)}`
             );
             
-            duration -= 1000;
+            duration -= 1000; // Kurangi 1 detik
             if (duration <= 0) {
                 clearInterval(updateInterval);
                 delete this.countdowns[account.uid];
-                this.checkAndSpin(account);
+                logger.info(`Akun ${this._maskEmail(account.email)} Hitung mundur selesai. Mencoba Spin lagi...`);
+                this.checkAndSpin(account); // Coba spin lagi setelah hitung mundur selesai
             }
         }, 1000);
 
         this.countdowns[account.uid] = updateInterval;
+        // Tampilkan status awal hitung mundur segera
+        logger.clearLine();
+        process.stdout.write(
+            `Akun ${this._maskEmail(account.email)} Hitung mundur Spin berikutnya: ${this.formatTimeRemaining(initialDuration)}`
+        );
     }
 
     async checkAllAccounts() {
         logger.info(`Mulai memeriksa semua akun...`);
-        await Promise.all(this.accounts.map(account => this.checkAndSpin(account)));
+        // Gunakan Promise.allSettled untuk menangani kegagalan individu tanpa menghentikan semua
+        const results = await Promise.allSettled(this.accounts.map(account => this.checkAndSpin(account)));
+        results.forEach((result, index) => {
+            if (result.status === 'rejected') {
+                logger.error(`Gagal memproses akun ${this._maskEmail(this.accounts[index].email)}: ${result.reason}`);
+            }
+        });
     }
 
     start() {
