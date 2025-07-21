@@ -2,9 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const cron = require('node-cron');
-const readline = require('readline'); // Diperlukan untuk askForProxyUsage
+const readline = require('readline');
 
-// ANSI color codes
 const colors = {
     reset: '\x1b[0m',
     bright: '\x1b[1m',
@@ -15,7 +14,6 @@ const colors = {
     cyan: '\x1b[36m'
 };
 
-// Logger sederhana untuk output konsol
 const logger = {
     info: (message) => console.log(`${colors.blue}[INFO]${colors.reset} ${message}`),
     warn: (message) => console.warn(`${colors.yellow}[PERINGATAN]${colors.reset} ${message}`),
@@ -49,14 +47,11 @@ const logger = {
     }
 };
 
-// Proxy Manager sederhana (diintegrasikan)
 const proxyManager = {
     proxies: {},
-    enableProxy: false, // Akan diatur dari Config
+    enableProxy: false,
     
-    async initialize() {
-        // Logika untuk bertanya penggunaan proxy dan memuat proxy akan dipindahkan ke AutoSpinBot
-    },
+    async initialize() {},
 
     getProxyAgent(email) {
         if (!this.enableProxy) {
@@ -66,13 +61,8 @@ const proxyManager = {
         if (!proxyUrl) {
             return null;
         }
-        // Implementasi agen proxy (misalnya, 'https-proxy-agent' atau 'socks-proxy-agent')
-        // Untuk contoh ini, kita akan mengembalikan URL proxy saja, Anda perlu menginstal
-        // dan mengkonfigurasi modul agen proxy yang sesuai di lingkungan Anda.
-        // Contoh: return new HttpsProxyAgent(proxyUrl);
-        // Atau: return new SocksProxyAgent(proxyUrl);
         logger.warn(`Proxy untuk ${email} terdeteksi: ${proxyUrl}. Pastikan Anda memiliki modul agen proxy yang terinstal.`);
-        return proxyUrl; // Mengembalikan URL proxy, perlu diubah menjadi agen yang sebenarnya
+        return proxyUrl;
     }
 };
 
@@ -81,30 +71,26 @@ class AutoSpinBot {
         this.API_BASE_URL = 'https://api-iowa.shaga.xyz';
         this.accounts = [];
         this.countdowns = {};
-        this.enableProxy = false; // Dari config
-        this.checkInterval = 3600; // Dari config, dalam detik (default setiap jam)
+        this.enableProxy = false;
+        this.checkInterval = 3600;
 
-        // Banner teks sederhana
         this.bannerText = `
 =====================================
  GLOB Auto Spin Bot
  Dibuat oleh: @0xjiushi21 (Twitter)
-             @zclsx (GitHub)
+              @zclsx (GitHub)
 =====================================
         `;
 
-        // ID QUEST untuk operasi spin, berdasarkan temuan Anda.
         this.QUEST_ID = '6bb26924-e6ee-473f-8ad0-5e743c3f3e1f'; 
     }
 
     async initialize() {
         try {
-            // Pastikan direktori dan file data ada
             this._checkAndCreateDataFiles();
             
-            // Tanya pengguna apakah akan mengaktifkan proxy
             this.enableProxy = await this._askForProxyUsage();
-            proxyManager.enableProxy = this.enableProxy; // Atur di proxyManager
+            proxyManager.enableProxy = this.enableProxy;
 
             if (this.enableProxy) {
                 proxyManager.proxies = this._loadProxies();
@@ -115,7 +101,6 @@ class AutoSpinBot {
                 }
             }
 
-            // Baca file tokens dari direktori data
             const tokensPath = path.join(process.cwd(), 'data', 'tokens.txt');
             const tokens = fs.readFileSync(tokensPath, 'utf8')
                 .split('\n')
@@ -145,11 +130,8 @@ class AutoSpinBot {
     displayAccountsTable() {
         const headers = ['No.', 'Email', 'ID Pengguna', 'Status Proxy'];
         const rows = this.accounts.map((account, index) => {
-            // Dapatkan status proxy
             const hasProxy = proxyManager.getProxyAgent(account.email) ? 'Dikonfigurasi' : 'Tidak Dikonfigurasi';
-            // Sembunyikan email
             const maskedEmail = this._maskEmail(account.email);
-            // Sembunyikan uid, hanya tampilkan 6 karakter pertama dan 4 karakter terakhir
             const maskedUid = this._maskUid(account.uid);
             
             return [
@@ -177,54 +159,48 @@ class AutoSpinBot {
         return uid.substring(0, 6) + '...' + uid.substring(uid.length - 4);
     }
 
-    // Fungsi checkCanSpin dihapus karena endpointnya tidak ditemukan atau tidak diperlukan.
-    // Status cooldown akan didapatkan langsung dari respons performSpin.
-
     async performSpin(account) {
         try {
-            // Dapatkan agen proxy untuk akun
             const proxyAgentUrl = proxyManager.getProxyAgent(account.email);
             const axiosConfig = {
                 headers: {
                     'authorization': `Bearer ${account.token}`,
-                    'accept': 'application/json',
-                    'content-type': 'application/json',
+                    'accept': 'application/json, text/plain, */*',
+                    'content-type': 'application/json; charset=utf-8',
                     'origin': 'https://glob.shaga.xyz',
                     'referer': 'https://glob.shaga.xyz/'
                 }
             };
             
-            // Jika ada proxy, tambahkan ke konfigurasi axios
             if (proxyAgentUrl) {
-                // Anda perlu menginstal 'https-proxy-agent' atau 'socks-proxy-agent'
-                // dan menginisialisasinya di sini. Contoh:
+                logger.warn(`Menggunakan proxy: ${proxyAgentUrl} untuk akun ${this._maskEmail(account.email)}. Pastikan modul agen proxy terinstal.`);
+                // Contoh: Anda perlu menginstal 'https-proxy-agent'
                 // const { HttpsProxyAgent } = require('https-proxy-agent');
                 // axiosConfig.httpsAgent = new HttpsProxyAgent(proxyAgentUrl);
-                logger.warn(`Menggunakan proxy: ${proxyAgentUrl} untuk akun ${this._maskEmail(account.email)}. Pastikan modul agen proxy terinstal.`);
             }
             
-            // Menggunakan QUEST_ID untuk endpoint spin, dan mengirim body kosong
             const response = await axios.post(
                 `${this.API_BASE_URL}/quests/${this.QUEST_ID}`,
-                {}, // Body kosong seperti yang terlihat di permintaan manual Anda
+                {}, 
                 axiosConfig
             );
             return response.data;
         } catch (error) {
-            // Tangani respons kesalahan dari server
             if (error.response && error.response.data) {
-                // Jika server mengembalikan pesan cooldown, kita tangani di sini
-                if (error.response.data.message === "Cooldown period not over yet") {
-                    logger.warn(`Akun ${this._maskEmail(account.email)}: ${error.response.data.message}`);
+                const responseData = error.response.data;
+                // Respons Cooldown period not over yet
+                if (responseData.message === "Cooldown period not over yet") {
+                    logger.warn(`Akun ${this._maskEmail(account.email)}: ${responseData.message}`);
                     return {
-                        message: error.response.data.message,
-                        nextSpinDurationMs: error.response.data.nextSpinDurationMs // Asumsi server mengirim ini
+                        message: responseData.message,
+                        nextSpinDurationMs: responseData.nextSpinDurationMs 
                     };
                 }
-                // Jika ada kesalahan lain dari server (misalnya, token tidak valid, dll.)
-                logger.error(`Akun ${this._maskEmail(account.email)} Spin gagal dengan respons server: ${JSON.stringify(error.response.data)}`);
-                return error.response.data; // Kembalikan data kesalahan dari server
-            }
+                // Tangani error umum lainnya dari server
+                logger.error(`Akun ${this._maskEmail(account.email)} Spin gagal dengan respons server: ${JSON.stringify(responseData)}`);
+                return responseData;
+            } 
+            // Tangani error jaringan atau lainnya
             logger.error(`Gagal melakukan Spin untuk akun ${this._maskEmail(account.email)}: ${error.message}`);
             return null;
         }
@@ -238,24 +214,29 @@ class AutoSpinBot {
     }
 
     async checkAndSpin(account) {
-        // Langsung coba melakukan spin
         logger.info(`Akun ${this._maskEmail(account.email)} sedang mencoba melakukan Spin...`);
         const spinResult = await this.performSpin(account);
         
         if (spinResult) {
+            // Kasus 1: Cooldown
             if (spinResult.message === "Cooldown period not over yet") {
-                // Jika ada pesan cooldown, mulai hitung mundur
-                this.startCountdown(account, spinResult.nextSpinDurationMs);
-            } else if (spinResult.rewards) {
-                // Jika berhasil spin dan ada hadiah
+                const duration = spinResult.nextSpinDurationMs || (4 * 60 * 60 * 1000); 
+                this.startCountdown(account, duration);
+            } 
+            // Kasus 2: Spin berhasil dan mendapatkan poin (misal {"result": 400})
+            else if (typeof spinResult.result === 'number' && spinResult.result >= 0) {
+                logger.success(`Akun ${this._maskEmail(account.email)} Spin berhasil! Mendapatkan ${spinResult.result} poin.`);
+                // Setelah spin berhasil, asumsikan perlu cooldown lagi (misal 4 jam)
+                this.startCountdown(account, 4 * 60 * 60 * 1000); 
+            } 
+            // Kasus 3: Spin berhasil dengan hadiah lain (jika ada `rewards` properti)
+            else if (spinResult.rewards) {
                 logger.success(`Akun ${this._maskEmail(account.email)} Spin berhasil!`);
                 logger.info(`Akun ${this._maskEmail(account.email)} mendapatkan hadiah: ${JSON.stringify(spinResult.rewards)}`);
-                // Setelah spin berhasil, asumsikan perlu cooldown lagi (misal 4 jam)
-                // Jika API tidak memberikan nextSpinDurationMs setelah spin berhasil,
-                // Anda mungkin perlu mengatur default cooldown di sini.
-                this.startCountdown(account, 4 * 60 * 60 * 1000); // Default 4 jam
-            } else {
-                // Tangani kasus lain jika respons tidak memiliki 'message' atau 'rewards'
+                this.startCountdown(account, 4 * 60 * 60 * 1000); 
+            }
+            // Kasus 4: Respons tak terduga
+            else {
                 logger.error(`Akun ${this._maskEmail(account.email)} Spin gagal atau respons tidak terduga: ${JSON.stringify(spinResult)}`);
             }
         } else {
@@ -265,38 +246,57 @@ class AutoSpinBot {
 
     startCountdown(account, duration) {
         if (this.countdowns[account.uid]) {
-            // Jika sudah ada hitung mundur aktif untuk akun ini, jangan mulai yang baru
-            return;
+            const existingIntervalId = this.countdowns[account.uid].intervalId;
+            const existingRemaining = this.countdowns[account.uid].remaining;
+            
+            if (duration < existingRemaining) {
+                 clearInterval(existingIntervalId);
+                 logger.info(`Memperbarui hitung mundur akun ${this._maskEmail(account.email)} dari ${this.formatTimeRemaining(existingRemaining)} menjadi ${this.formatTimeRemaining(duration)}.`);
+                 this._setupCountdownInterval(account, duration);
+            } else {
+                 return;
+            }
+        } else {
+            this._setupCountdownInterval(account, duration);
         }
+    }
 
-        const initialDuration = duration; // Simpan durasi awal untuk referensi
-        const updateInterval = setInterval(() => {
+    _setupCountdownInterval(account, duration) {
+        let remainingDuration = duration;
+        const intervalId = setInterval(() => {
             logger.clearLine();
             process.stdout.write(
-                `Akun ${this._maskEmail(account.email)} Hitung mundur Spin berikutnya: ${this.formatTimeRemaining(duration)}`
+                `Akun ${this._maskEmail(account.email)} Hitung mundur Spin berikutnya: ${this.formatTimeRemaining(remainingDuration)}`
             );
             
-            duration -= 1000; // Kurangi 1 detik
-            if (duration <= 0) {
-                clearInterval(updateInterval);
+            remainingDuration -= 1000; 
+            if (remainingDuration <= 0) {
+                clearInterval(intervalId);
                 delete this.countdowns[account.uid];
-                logger.info(`Akun ${this._maskEmail(account.email)} Hitung mundur selesai. Mencoba Spin lagi...`);
-                this.checkAndSpin(account); // Coba spin lagi setelah hitung mundur selesai
+                logger.info(`\nAkun ${this._maskEmail(account.email)} Hitung mundur selesai. Mencoba Spin lagi...`);
+                this.checkAndSpin(account); 
+            } else {
+                 this.countdowns[account.uid] = { intervalId: intervalId, remaining: remainingDuration };
             }
         }, 1000);
 
-        this.countdowns[account.uid] = updateInterval;
-        // Tampilkan status awal hitung mundur segera
+        this.countdowns[account.uid] = { intervalId: intervalId, remaining: remainingDuration };
         logger.clearLine();
         process.stdout.write(
-            `Akun ${this._maskEmail(account.email)} Hitung mundur Spin berikutnya: ${this.formatTimeRemaining(initialDuration)}`
+            `Akun ${this._maskEmail(account.email)} Hitung mundur Spin berikutnya: ${this.formatTimeRemaining(remainingDuration)}`
         );
     }
 
     async checkAllAccounts() {
-        logger.info(`Mulai memeriksa semua akun...`);
-        // Gunakan Promise.allSettled untuk menangani kegagalan individu tanpa menghentikan semua
-        const results = await Promise.allSettled(this.accounts.map(account => this.checkAndSpin(account)));
+        logger.info(`Mulai memeriksa semua akun untuk Spin...`);
+        const results = await Promise.allSettled(this.accounts.map(account => {
+            if (!this.countdowns[account.uid]) {
+                return this.checkAndSpin(account);
+            } else {
+                logger.info(`Akun ${this._maskEmail(account.email)} masih dalam hitung mundur. Lewati Spin saat ini.`);
+                return Promise.resolve();
+            }
+        }));
         results.forEach((result, index) => {
             if (result.status === 'rejected') {
                 logger.error(`Gagal memproses akun ${this._maskEmail(this.accounts[index].email)}: ${result.reason}`);
@@ -307,11 +307,9 @@ class AutoSpinBot {
     start() {
         logger.success(`Bot telah dimulai`);
         
-        // Jalankan sekali segera
         this.spinAndCheckAccounts();
 
-        // Atur untuk berjalan setiap 4 jam 3 menit (243 menit)
-        cron.schedule(`3 */4 * * *`, () => {
+        cron.schedule(`3 */4 * * *`, () => { 
             this.spinAndCheckAccounts();
         });
 
@@ -319,23 +317,18 @@ class AutoSpinBot {
     }
     
     async spinAndCheckAccounts() {
-        logger.info(`Mulai melakukan operasi spin...`);
-        // Lakukan operasi spin terlebih dahulu
+        logger.info(`Memulai siklus operasi Spin...`);
         await this.checkAllAccounts();
         
-        // Periksa apakah ada akun yang dalam status hitung mundur
         const hasActiveCountdowns = Object.keys(this.countdowns).length > 0;
         
         if (hasActiveCountdowns) {
-            logger.info(`Setidaknya ada satu akun yang menunggu waktu Spin berikutnya, tabel status akun tidak akan ditampilkan`);
+            logger.info(`Beberapa akun masih dalam hitung mundur Spin. Status akun tidak akan ditampilkan sampai semua hitung mundur selesai.`);
         } else {
-            // Hanya tampilkan status akun jika tidak ada hitung mundur aktif
-            logger.info(`Operasi Spin selesai, sedang memeriksa status akun...`);
+            logger.info(`Siklus Spin selesai. Menampilkan status akun...`);
             this.displayAccountsTable();
         }
     }
-
-    // --- Logika dari config.js diintegrasikan di sini ---
 
     async _askForProxyUsage() {
         const rl = readline.createInterface({
@@ -356,7 +349,6 @@ class AutoSpinBot {
         const proxies = {};
         const proxyFilePath = path.join(process.cwd(), 'data', 'proxy.txt');
         
-        // Periksa apakah file ada
         if (!fs.existsSync(proxyFilePath)) {
             return proxies;
         }
@@ -365,10 +357,8 @@ class AutoSpinBot {
             const lines = fs.readFileSync(proxyFilePath, 'utf8').split('\n');
             
             for (const line of lines) {
-                // Lewati baris kosong dan komentar
                 if (!line.trim() || line.trim().startsWith('#')) continue;
                 
-                // Format: email=proxy_url
                 const parts = line.trim().split('=');
                 if (parts.length !== 2) continue;
                 
@@ -389,12 +379,10 @@ class AutoSpinBot {
     _checkAndCreateDataFiles() {
         const dataDir = path.join(process.cwd(), 'data');
         
-        // Pastikan direktori data ada
         if (!fs.existsSync(dataDir)) {
             fs.mkdirSync(dataDir, { recursive: true });
         }
         
-        // Periksa dan buat proxy.txt
         const proxyPath = path.join(dataDir, 'proxy.txt');
         if (!fs.existsSync(proxyPath)) {
             const proxyExample = 
@@ -406,7 +394,6 @@ class AutoSpinBot {
             fs.writeFileSync(proxyPath, proxyExample, 'utf8');
         }
         
-        // Periksa tokens.txt
         const tokensPath = path.join(dataDir, 'tokens.txt');
         if (!fs.existsSync(tokensPath)) {
             const tokensExample = '# Tambahkan satu JWT token per baris di file ini';
@@ -415,14 +402,12 @@ class AutoSpinBot {
     }
 }
 
-// Mulai Bot
 async function main() {
     const bot = new AutoSpinBot();
-    logger.printBanner(bot.bannerText); // Tampilkan banner sederhana
+    logger.printBanner(bot.bannerText);
     
     logger.info('GLOB Auto Spin Bot | Sedang menginisialisasi...');
     
-    // Inisialisasi bot (yang sekarang mencakup inisialisasi proxy dan pemuatan token)
     await bot.initialize();
     bot.start();
 }
