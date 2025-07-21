@@ -4,6 +4,7 @@ const axios = require('axios');
 const cron = require('node-cron');
 const readline = require('readline');
 
+// ANSI color codes
 const colors = {
     reset: '\x1b[0m',
     bright: '\x1b[1m',
@@ -14,6 +15,7 @@ const colors = {
     cyan: '\x1b[36m'
 };
 
+// Logger sederhana untuk output konsol
 const logger = {
     info: (message) => console.log(`${colors.blue}[INFO]${colors.reset} ${message}`),
     warn: (message) => console.warn(`${colors.yellow}[PERINGATAN]${colors.reset} ${message}`),
@@ -47,6 +49,7 @@ const logger = {
     }
 };
 
+// Proxy Manager sederhana (diintegrasikan)
 const proxyManager = {
     proxies: {},
     enableProxy: false,
@@ -179,12 +182,19 @@ class AutoSpinBot {
                 // axiosConfig.httpsAgent = new HttpsProxyAgent(proxyAgentUrl);
             }
             
+            // --- PERUBAHAN PENTING DI SINI: MENGGUNAKAN PAYLOAD MINIMAL UNTUK MENGHINDARI 404 ---
+            // Berdasarkan data network Anda yang menunjukkan adanya payload seperti {"result": 1000},
+            // kita akan mengirim payload minimal ini. Nilai sebenarnya akan dideteksi dari respons API.
+            const minimalSpinPayload = { result: 0 }; // Menggunakan 0 sebagai nilai default paling netral
+
+            logger.info(`Akun ${this._maskEmail(account.email)} mencoba spin dengan payload minimal: ${JSON.stringify(minimalSpinPayload)}`);
+
             const response = await axios.post(
                 `${this.API_BASE_URL}/quests/${this.QUEST_ID}`,
-                {}, 
+                minimalSpinPayload, // Mengirimkan payload minimal yang diharapkan
                 axiosConfig
             );
-            return response.data;
+            return response.data; // Mengembalikan data respons dari API
         } catch (error) {
             if (error.response && error.response.data) {
                 const responseData = error.response.data;
@@ -200,7 +210,7 @@ class AutoSpinBot {
                 logger.error(`Akun ${this._maskEmail(account.email)} Spin gagal dengan respons server: ${JSON.stringify(responseData)}`);
                 return responseData;
             } 
-            // Tangani error jaringan atau lainnya
+            // Tangani error jaringan atau lainnya (misalnya 404 jika payload 0 tidak cukup)
             logger.error(`Gagal melakukan Spin untuk akun ${this._maskEmail(account.email)}: ${error.message}`);
             return null;
         }
@@ -223,9 +233,10 @@ class AutoSpinBot {
                 const duration = spinResult.nextSpinDurationMs || (4 * 60 * 60 * 1000); 
                 this.startCountdown(account, duration);
             } 
-            // Kasus 2: Spin berhasil dan mendapatkan poin (misal {"result": 400})
+            // Kasus 2: Spin berhasil dan mendapatkan poin (deteksi dari API)
+            // Ini akan mencakup respons seperti {"result": 400} atau {"result": 1000}
             else if (typeof spinResult.result === 'number' && spinResult.result >= 0) {
-                logger.success(`Akun ${this._maskEmail(account.email)} Spin berhasil! Mendapatkan ${spinResult.result} poin.`);
+                logger.success(`Akun ${this._maskEmail(account.email)} Spin berhasil! Mendapatkan ${spinResult.result} poin dari API.`);
                 // Setelah spin berhasil, asumsikan perlu cooldown lagi (misal 4 jam)
                 this.startCountdown(account, 4 * 60 * 60 * 1000); 
             } 
